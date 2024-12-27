@@ -1,0 +1,125 @@
+<h2>SPA Authentication Sample</h2><p>Welcome to our page!</p><button id="btn-login" disabled="true" onclick="login()">Log in</button> <button id="btn-logout" disabled="true" onclick="logout()">Log out</button><script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script><script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script><div class="hidden" id="gated-content"><p>You're seeing this content because you're currently <strong>logged in</strong>.</p><label>Access token:<pre id="ipt-access-token"></pre></label> <label>User profile:<pre id="ipt-user-profile"></pre></label></div><script>let auth0Client = null;
+const fetchAuthConfig = () => fetch("/auth_config.json");
+// ..
+
+const configureClient = async () => {
+  const response = await fetchAuthConfig();
+  const config = await response.json();
+  console.log (response)
+
+  auth0Client = await auth0.createAuth0Client({
+    domain: config.domain,
+    clientId: config.clientId,
+    authorizationParams: {
+      audience: 'https://iniret.com/api', // Add your API audience here
+    }
+  });
+  console.log(auth0Client)
+};
+
+// ..
+
+window.onload = async () => {
+  await configureClient();
+
+  // NEW - update the UI state
+  updateUI();
+
+  const isAuthenticated = await auth0Client.isAuthenticated();
+
+  if (isAuthenticated) {
+    // show the gated content
+    return;
+  }
+
+  // NEW - check for the code and state parameters
+  const query = window.location.search;
+  if (query.includes("code=") && query.includes("state=")) {
+
+    // Process the login state
+    await auth0Client.handleRedirectCallback();
+    
+    updateUI();
+
+    // Use replaceState to redirect the user away and remove the querystring parameters
+    window.history.replaceState({}, document.title, "/");
+  }
+  
+};
+
+// ...
+
+const updateUI = async () => { 
+  const isAuthenticated = await auth0Client.isAuthenticated();
+
+  document.getElementById("btn-logout").disabled = !isAuthenticated;
+  document.getElementById("btn-login").disabled = isAuthenticated;
+  
+  // NEW - add logic to show/hide gated content after authentication
+  if (isAuthenticated) {
+    document.getElementById("gated-content").classList.remove("hidden");
+    token = await auth0Client.getTokenSilently();
+    document.getElementById(
+      "ipt-access-token"
+    ).innerHTML = token
+    console.log(token)
+    const user = await loginCustomJwt(token)
+
+    document.getElementById("ipt-user-profile").textContent = JSON.stringify(
+      await auth0Client.getUser()
+    );
+
+  } else {
+    document.getElementById("gated-content").classList.add("hidden");
+  }
+};
+
+// ..
+
+// ..
+
+const login = async () => {
+  await auth0Client.loginWithRedirect({
+    authorizationParams: {
+      redirect_uri: 'http://localhost:8082/login/'
+    }
+  });
+};
+
+
+const logout = () => {
+  auth0Client.logout({
+    logoutParams: {
+      returnTo: window.location.origin
+    }
+  });
+};
+
+const app = Realm.App.getApp('azoio-evvkb'); // replace this with your App ID
+
+
+async function loginCustomJwt(jwt) {
+  // Create a Custom JWT credential
+  const credentials = Realm.Credentials.jwt(jwt);
+
+  // Authenticate the user
+  const user = await app.logIn(credentials);
+  // `App.currentUser` updates to match the logged in user
+  console.assert(user.id === app.currentUser.id);
+  console.log(user)
+  return user;
+}
+
+
+
+/*
+curl \
+https://us-east-1.aws.data.mongodb-api.com/app/azoio-evvkb/endpoint/auth \
+Authorization: Bearer eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwiaXNzIjoiaHR0cHM6Ly9kZXYtOGM2bmV3aWJvYjU1MWx2aS51cy5hdXRoMC5jb20vIn0..WUkgHD_3S97RgegD.AbK_P2lvguPZMlbJ4If1TllW0rQl4o0UrrLc2elsbEczMix6WUBiWrM5jV6Tg39I7j4AcIez32cU5GWsJtbgCJHIo2L5_Qh4aQBaVd8kQZza9ADLrL-C16c6aZhnxTBJbIxmCuWfdN1gfw1MdKVdF-NVOtGmIeGx1lBoN1PimD1Ww8KVKbpHdUrlHw7ryHdHVxIhfg9N8pNTNr_NXjqigG2X6tjzKOfwGk_XCVCTbS8eq1aRVmVpH9af06w4THLwG8RhD6Qkfu4LPm6PE3IFwqen8PRIoXADwPJDzhfAZBWMKjA_h3O4MzENaMWZLZqmZr-dBWL0PdEjK4HMbrBqpnWr.tpVCjYuAMFKtvG8ILGGdjw
+
+
+curl -X GET \
+  https://us-east-1.aws.data.mongodb-api.com/app/azoio-evvkb/endpoint/auth \
+  -H "Authorization: Bearer eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwiaXNzIjoiaHR0cHM6Ly9kZXYtOGM2bmV3aWJvYjU1MWx2aS51cy5hdXRoMC5jb20vIn0..WUkgHD_3S97RgegD.AbK_P2lvguPZMlbJ4If1TllW0rQl4o0UrrLc2elsbEczMix6WUBiWrM5jV6Tg39I7j4AcIez32cU5GWsJtbgCJHIo2L5_Qh4aQBaVd8kQZza9ADLrL-C16c6aZhnxTBJbIxmCuWfdN1gfw1MdKVdF-NVOtGmIeGx1lBoN1PimD1Ww8KVKbpHdUrlHw7ryHdHVxIhfg9N8pNTNr_NXjqigG2X6tjzKOfwGk_XCVCTbS8eq1aRVmVpH9af06w4THLwG8RhD6Qkfu4LPm6PE3IFwqen8PRIoXADwPJDzhfAZBWMKjA_h3O4MzENaMWZLZqmZr-dBWL0PdEjK4HMbrBqpnWr.tpVCjYuAMFKtvG8ILGGdjw"
+
+*/</script>
